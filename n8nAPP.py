@@ -29,21 +29,29 @@ st.markdown(
         margin-bottom: 1rem;
     }
     
-    /* 確保按鈕在手機上保持同一行 */
-    [data-testid="column"] {
+    /* 確保按鈕在手機上保持同一行 - 使用更通用的選擇器 */
+    [data-testid="column"],
+    div[data-testid="column"],
+    .stColumns [data-testid="column"],
+    .element-container [data-testid="column"] {
         flex: 1 1 0% !important;
         min-width: 0 !important;
         max-width: 33.33% !important;
+        flex-shrink: 1 !important;
     }
-    /* 確保按鈕容器不會換行 */
+    /* 確保按鈕容器不會換行 - 針對所有可能的容器 */
+    .stColumns,
     .stColumns > div,
-    div[data-testid="column-container"] {
+    div[data-testid="column-container"],
+    .element-container > div,
+    div[style*="display: flex"] {
         display: flex !important;
         flex-wrap: nowrap !important;
         flex-direction: row !important;
     }
     /* 按鈕樣式調整，確保文字不換行 */
-    button[kind="secondary"] {
+    button[kind="secondary"],
+    button.stButton {
         white-space: nowrap !important;
         font-size: 0.9rem !important;
         padding: 0.5rem 0.8rem !important;
@@ -51,27 +59,42 @@ st.markdown(
         max-width: 100% !important;
     }
     @media (max-width: 768px) {
-        /* 手機上強制按鈕保持同一行 */
-        [data-testid="column"] {
+        /* 手機上強制按鈕保持同一行 - 更強力的規則 */
+        [data-testid="column"],
+        div[data-testid="column"],
+        .stColumns [data-testid="column"],
+        .element-container [data-testid="column"],
+        .stColumns > div > div {
             flex: 1 1 0% !important;
             min-width: 0 !important;
             max-width: 33.33% !important;
             flex-shrink: 1 !important;
+            flex-basis: 0 !important;
         }
+        /* 強制所有列容器不換行 */
+        .stColumns,
         .stColumns > div,
-        div[data-testid="column-container"] {
+        div[data-testid="column-container"],
+        .element-container > div,
+        div[style*="display: flex"],
+        .stColumns > div[style*="display"],
+        *[class*="column"] {
             display: flex !important;
             flex-wrap: nowrap !important;
             flex-direction: row !important;
+            width: 100% !important;
         }
-        button[kind="secondary"] {
-            font-size: 0.75rem !important;
-            padding: 0.35rem 0.5rem !important;
+        /* 按鈕樣式 */
+        button[kind="secondary"],
+        button.stButton {
+            font-size: 0.7rem !important;
+            padding: 0.3rem 0.4rem !important;
             white-space: nowrap !important;
             width: 100% !important;
             max-width: 100% !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
+            min-width: 0 !important;
         }
     }
     </style>
