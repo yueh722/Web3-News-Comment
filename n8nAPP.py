@@ -28,31 +28,50 @@ st.markdown(
         text-align: center;
         margin-bottom: 1rem;
     }
-    @media (max-width: 768px) {
-        .custom-title {
-            font-size: 1.2rem !important;
-        }
-    }
+    
     /* 確保按鈕在手機上保持同一行 */
     [data-testid="column"] {
         flex: 1 1 0% !important;
         min-width: 0 !important;
+        max-width: 33.33% !important;
     }
     /* 確保按鈕容器不會換行 */
-    .stColumns > div {
+    .stColumns > div,
+    div[data-testid="column-container"] {
         display: flex !important;
         flex-wrap: nowrap !important;
+        flex-direction: row !important;
     }
     /* 按鈕樣式調整，確保文字不換行 */
     button[kind="secondary"] {
         white-space: nowrap !important;
         font-size: 0.9rem !important;
         padding: 0.5rem 0.8rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
     @media (max-width: 768px) {
+        /* 手機上強制按鈕保持同一行 */
+        [data-testid="column"] {
+            flex: 1 1 0% !important;
+            min-width: 0 !important;
+            max-width: 33.33% !important;
+            flex-shrink: 1 !important;
+        }
+        .stColumns > div,
+        div[data-testid="column-container"] {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            flex-direction: row !important;
+        }
         button[kind="secondary"] {
-            font-size: 0.8rem !important;
-            padding: 0.4rem 0.6rem !important;
+            font-size: 0.75rem !important;
+            padding: 0.35rem 0.5rem !important;
+            white-space: nowrap !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
         }
     }
     </style>
