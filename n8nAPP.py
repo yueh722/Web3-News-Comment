@@ -144,11 +144,18 @@ def show_current_star(data, index):
                     rerun()
 
         comment_key = f"comment_{row.get('sno')}_{row.get('日期')}"
+
+        # 初始化 session_state 
+        if comment_key not in st.session_state:
+            st.session_state[comment_key] = str(row.get("評論", ""))
+
+
         comment = st.text_area(
             "留下評論：",
-            value=str(row.get("評論", "")),
+            value=st.session_state[comment_key],
             key=comment_key
         )
+        
 
         button_key = f"send_comment_{row.get('列號')}_{row.get('日期')}"
         if st.button("送出評論", key=button_key):
