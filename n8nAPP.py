@@ -64,33 +64,50 @@ if "controls_container" not in st.session_state:
     st.session_state.controls_container = st.empty()
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
+if "selected_date" not in st.session_state:
+    st.session_state.selected_date = datetime.today().date()
+if "current_date" not in st.session_state:
+    st.session_state.current_date = datetime.today().date()
 
 # ====== 顯示狀態 ======
 def update_status(current_index):
+    # 獲取目前設定的日期字串
+    selected_date_str = st.session_state.selected_date.strftime("%Y/%m/%d")
+    
     if st.session_state.today_rows:
         # 從 today_rows 中獲取當前行的數據
         if 0 <= current_index < len(st.session_state.today_rows):
             row = st.session_state.today_rows[current_index]
             st.session_state.status_container.info(
-                f"已取得今日新聞共 {len(st.session_state.today_rows)} 則 | NO.{row['sno']}  idx:{current_index}"
+                f"已取得 {selected_date_str} 新聞共 {len(st.session_state.today_rows)} 則 | NO.{row['sno']}  idx:{current_index}"
             )
         else:
             st.session_state.status_container.info(
-                f"已取得今日新聞共 {len(st.session_state.today_rows)} 則 |  idx:{current_index}"
+                f"已取得 {selected_date_str} 新聞共 {len(st.session_state.today_rows)} 則 |  idx:{current_index}"
             )
     else:
-        st.session_state.status_container.warning("請先按 🔄 更新，取得今日新聞。")
+        st.session_state.status_container.warning(f"請先按 🔄 更新，取得新聞內容")
 
 # ====== 顯示新聞 ======
 def show_current_star(data, index):
-    if not data:
-        st.session_state.star_container.empty()
-        return
-
-    row = data[index]    
-
     with st.session_state.star_container.container():
-        st.write(f"{row['日期']}")
+        # 日期選擇器（無論是否有數據都顯示，位置一致，取代原本的日期顯示）
+        st.session_state.selected_date = st.date_input(
+            "選擇日期：",
+            value=st.session_state.selected_date,
+            key="date_picker"
+        )
+        
+        # 如果沒有數據，只顯示日期選擇器後返回
+        if not data:
+            return
+
+        row = data[index]    
+        
+        current_date_str = st.session_state.current_date
+        st.write(f"{current_date_str}")
+
+
         # 分開顯示 NO.5 和標題，並為 NO.5 添加顏色
         st.markdown(
             f"""
@@ -119,26 +136,7 @@ def show_current_star(data, index):
 
         with col2:
             if st.button("🔄 更新", key=f"update_{row.get('sno')}_{row.get('日期')}"):
-                today_str = datetime.today().strftime("%Y/%m/%d")
-                try:
-                    response = requests.get(N8N_WEBHOOK_read, params={"date": today_str})
-                    if response.status_code == 200:
-                        data = response.json()
-                        if isinstance(data, list) and data:
-                            if len(data) == 1 and "message" in data[0]:
-                                st.success(data[0]["message"])  
-                            else:    
-                                st.session_state.today_rows = [item.get("json", item) for item in data]
-                                st.session_state.current_index = 0
-                                rerun()
-                        else:
-                            st.warning("n8n 回傳資料為空")
-                    else:
-                        st.error(f"n8n 回應錯誤: {response.text}")
-                except Exception as e:
-                    st.error(f"無法連線到 n8n 更新 : {e}")
-                    st.text(traceback.format_exc())
-
+                button_update_content()
         with col3:
             if st.button("➡ 下一則", key=f"next_{row.get('sno')}_{row.get('日期')}"):
                 if(st.session_state.current_index < (len(st.session_state.today_rows)-1)):    
@@ -155,8 +153,8 @@ def show_current_star(data, index):
         button_key = f"send_comment_{row.get('列號')}_{row.get('日期')}"
         if st.button("送出評論", key=button_key):
             try:
-                #sheet_name = datetime.today().strftime("%Y/%m/%d")
-                sheet_name = row.get('日期')
+                # 使用選擇的日期作為 sheetName
+                sheet_name = st.session_state.selected_date.strftime("%Y/%m/%d")
                 payload = {
                     "sheetName": sheet_name, 
                     "rowIndex": row["列號"],   
@@ -182,9 +180,29 @@ def show_current_star(data, index):
                 st.error(f"無法連線到 n8n 評論: {e}")
 
 
-# ====== 顯示目前新聞和狀態 ======
-update_status(st.session_state.current_index)
-show_current_star(st.session_state.today_rows, st.session_state.current_index)
+def button_update_content():
+                selected_date_str = st.session_state.selected_date.strftime("%Y/%m/%d")
+                try:
+                    response = requests.get(N8N_WEBHOOK_read, params={"date": selected_date_str})
+                    if response.status_code == 200:
+                        data = response.json()
+                        if isinstance(data, list) and data:
+                            if len(data) == 1 and "message" in data[0]:
+                                st.success(data[0]["message"])  
+                            else:    
+                                st.session_state.today_rows = [item.get("json", item) for item in data]
+                                st.session_state.current_index = 0
+                                st.session_state.current_date = selected_date_str
+                                rerun()
+                        else:
+                            st.warning("n8n 回傳資料為空")
+                    else:
+                        st.error(f"n8n 回應錯誤: {response.text}")
+                except Exception as e:
+                    st.error(f"無法連線到 n8n 更新 : {e}")
+                    st.text(traceback.format_exc())
+
+
 
 # ====== 按鈕（只在還沒有更新時顯示在底部）======
 if not st.session_state.today_rows:
@@ -196,25 +214,10 @@ if not st.session_state.today_rows:
 
         with col2:
             if st.button("🔄 更新", key="update_initial"):
-                today_str = datetime.today().strftime("%Y/%m/%d")
-                try:
-                    response = requests.get(N8N_WEBHOOK_read, params={"date": today_str})
-                    if response.status_code == 200:
-                        data = response.json()
-                        if isinstance(data, list) and data:
-                            if len(data) == 1 and "message" in data[0]:
-                                st.success(data[0]["message"])  
-                            else:    
-                                st.session_state.today_rows = [item.get("json", item) for item in data]
-                                st.session_state.current_index = 0
-                                rerun()
-                        else:
-                            st.warning("n8n 回傳資料為空")
-                    else:
-                        st.error(f"n8n 回應錯誤: {response.text}")
-                except Exception as e:
-                    st.error(f"無法連線到 n8n 更新 : {e}")
-                    st.text(traceback.format_exc())
-
+                button_update_content()
         with col3:
             st.empty()  # 右側空白
+            
+# ====== 顯示目前新聞和狀態 ======
+update_status(st.session_state.current_index)
+show_current_star(st.session_state.today_rows, st.session_state.current_index)
