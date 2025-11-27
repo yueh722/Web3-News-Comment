@@ -1,67 +1,20 @@
 import streamlit as st
-import requests
 from datetime import datetime
-import traceback
+from news_service import NewsService
+from utils import inject_custom_css, inject_swipe_detection
 
-# 兼容舊版本 Streamlit 的 rerun 方法
-def rerun():
-    """兼容不同版本的 Streamlit rerun 方法"""
-    if hasattr(st, 'rerun'):
-        st.rerun()
-    elif hasattr(st, 'experimental_rerun'):
-        st.experimental_rerun()
-    # 如果都没有，按钮点击会自动触发重新运行
+# ====== Configuration & Setup ======
+st.set_page_config(page_title="Web3 News", page_icon="📰", layout="centered")
+inject_custom_css()
+inject_swipe_detection()
 
-# ====== n8n Webhook URL ======
+# Initialize Service
+if "news_service" not in st.session_state:
+    st.session_state.news_service = NewsService()
 
-N8N_WEBHOOK_read = "https://n8n.defintek.io/webhook/read_news"
-N8N_WEBHOOK_update = "https://n8n.defintek.io/webhook/update_news"
-
-# ====== Streamlit 標題 ======
-# 使用自定義樣式調整標題大小，避免手機上換行
-st.markdown(
-    """
-    <style>
-    .custom-title {
-        font-size: 1.5rem !important;
-        font-weight: bold;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    
-
-    @media (max-width: 768px) {
-        /* 手機上強制按鈕保持同一行 - 更強力的規則 */
-        [data-testid="column"],
-        div[data-testid="column"],
-        .stColumns [data-testid="column"],
-        .element-container [data-testid="column"],
-        .stColumns > div > div {
-            flex: 1 1 0% !important;
-            min-width: 0 !important;
-            max-width: 33.33% !important;
-            flex-shrink: 1 !important;
-            flex-basis: 0 !important;
-        }
-       
-    }
-    </style>
-    <h1 class="custom-title">✨ Web3 精選新聞 ✨</h1>
-    """,
-    unsafe_allow_html=True
-)
-
-# ====== 初始化 Session State ======
+# ====== Session State Initialization ======
 if "today_rows" not in st.session_state:
     st.session_state.today_rows = []
-if "comment_values" not in st.session_state:
-    st.session_state.comment_values = {}
-if "star_container" not in st.session_state:
-    st.session_state.star_container = st.empty()
-if "status_container" not in st.session_state:
-    st.session_state.status_container = st.empty()
-if "controls_container" not in st.session_state:
-    st.session_state.controls_container = st.empty()
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 if "selected_date" not in st.session_state:
@@ -69,162 +22,176 @@ if "selected_date" not in st.session_state:
 if "current_date" not in st.session_state:
     st.session_state.current_date = datetime.today().date()
 
-# ====== 顯示狀態 ======
-def update_status(current_index):
-    # 獲取目前設定的日期字串
-    selected_date_str = st.session_state.selected_date.strftime("%Y/%m/%d")
+# ====== Helper Functions ======
+def rerun():
+    """Compatible rerun."""
+    if hasattr(st, 'rerun'):
+        st.rerun()
+    elif hasattr(st, 'experimental_rerun'):
+        st.experimental_rerun()
+
+def handle_update():
+    """Fetch news from n8n."""
+    date_str = st.session_state.selected_date.strftime("%Y/%m/%d")
     
-    if st.session_state.today_rows:
-        # 從 today_rows 中獲取當前行的數據
-        if 0 <= current_index < len(st.session_state.today_rows):
-            row = st.session_state.today_rows[current_index]
-            st.session_state.status_container.info(
-                f"已取得 {selected_date_str} 新聞共 {len(st.session_state.today_rows)} 則 | NO.{row['sno']}  idx:{current_index}"
-            )
+    # Use a placeholder to show updating status in the correct area
+    # We need to access the placeholder that is rendered below. 
+    # Since Streamlit renders top-to-bottom, we can't easily access a placeholder defined later.
+    # However, we can define the placeholder EARLY (before button) but that puts it above.
+    # OR we can use st.empty() at the top of the script and move it? No.
+    # BEST APPROACH: Just use st.toast or st.info at the top? User wants it in the status area.
+    # WORKAROUND: We will use a session state flag to show "Updating..." in the status area on rerun?
+    # But fetch happens inside the callback.
+    # Let's try to use `st.spinner` but explain to user it's standard behavior OR
+    # use `status_placeholder.info(...)` if we define it early.
+    # Given the layout constraint (Status below Button), we can define the placeholder 
+    # immediately after the button columns.
+    
+    # Actually, let's just use st.spinner for now as it's robust, 
+    # but we will try to make the status area show "Updating..." if possible.
+    # Since we can't easily update a container defined later, we will stick to spinner 
+    # but ensure the final message lands in the status area.
+    
+    # Fetch news directly (loading message handled in UI)
+    result = st.session_state.news_service.fetch_news(date_str)
+        
+    if result["status"] == "success":
+        if "data" in result:
+            st.session_state.today_rows = result["data"]
+            st.session_state.current_index = 0
+            st.session_state.current_date = date_str
+            if not st.session_state.today_rows:
+                 # This will be shown in the status area on rerun
+                 pass 
         else:
-            st.session_state.status_container.info(
-                f"已取得 {selected_date_str} 新聞共 {len(st.session_state.today_rows)} 則 |  idx:{current_index}"
-            )
+            st.success(result.get("message", "操作成功"))
+    elif result["status"] == "warning":
+        st.warning(result["message"])
     else:
-        st.session_state.status_container.warning(f"請先按 🔄 更新，取得新聞內容")
+            # If data is empty, the result message might say "No news"
+            # We can let the caller handle the message if needed, 
+            # but usually we just update state.
+            pass
+    
+    return result
 
-# ====== 顯示新聞 ======
-def show_current_star(data, index):
-    with st.session_state.star_container.container():
-        # 日期選擇器（無論是否有數據都顯示，位置一致，取代原本的日期顯示）
+def handle_comment(row, comment):
+    """Send comment to n8n."""
+    sheet_name = st.session_state.selected_date.strftime("%Y/%m/%d")
+    
+    with st.spinner("送出評論中..."):
+        result = st.session_state.news_service.post_comment(sheet_name, row["列號"], comment)
+    
+    if result["status"] == "success":
+        st.success(result["message"])
+        # Update local state
+        for r in st.session_state.today_rows:
+            if r["列號"] == row["列號"]:
+                r["評論"] = comment
+                break
+        rerun()
+    else:
+        st.error(result["message"])
+
+# ====== UI Layout ======
+
+# Define Layout Containers
+header_container = st.container()
+controls_container = st.container()
+status_container = st.container()
+content_container = st.container()
+
+# 1. Title
+with header_container:
+    st.markdown('<h1 class="custom-title">✨ Web3 精選新聞 ✨</h1>', unsafe_allow_html=True)
+
+# 2. Control Panel (Date & Update)
+with controls_container:
+    col_date, col_btn = st.columns([2, 1])
+    with col_date:
         st.session_state.selected_date = st.date_input(
-            "選擇日期：",
-            value=st.session_state.selected_date,
-            key="date_picker"
+            "選擇日期",
+            value=st.session_state.selected_date
         )
-        
-        # 如果沒有數據，只顯示日期選擇器後返回
-        if not data:
-            return
+    with col_btn:
+        # Add spacer to align button with input box (pushing it down by label height)
+        # Increased to 38px to account for larger label font size
+        st.markdown('<div style="height: 38px;"></div>', unsafe_allow_html=True)
+        if st.button("🔄 更新新聞", key="btn_update_news"):
+            # Show updating message in status container using a placeholder
+            with status_container:
+                status_placeholder = st.empty()
+                status_placeholder.markdown(
+                    f'<div class="status-area" style="background-color: #e69138; color: white;">正在更新 {st.session_state.selected_date.strftime("%Y/%m/%d")} 的新聞...</div>', 
+                    unsafe_allow_html=True
+                )
+                
+                # Perform update
+                result = handle_update()
+                
+                if result["status"] == "success":
+                    # Clear message and rerun to show content
+                    status_placeholder.empty()
+                    rerun()
+                elif result["status"] == "warning":
+                    status_placeholder.warning(result["message"])
+                else:
+                    status_placeholder.error(result["message"])
 
-        row = data[index]    
-        
-        current_date_str = st.session_state.current_date
-        st.write(f"{current_date_str}")
-
-
-        # 分開顯示 NO.5 和標題，並為 NO.5 添加顏色
+# 3. Status Bar (Below Controls)
+with status_container:
+    # Only show warning if no data. 
+    if not st.session_state.today_rows:
+        st.markdown('<div class="status-area">', unsafe_allow_html=True)
         st.markdown(
-            f"""
-            <div style="margin-bottom: 0.5rem;">
-                <span style="color: #FF6B6B; font-weight: bold; font-size: 1.1em;">NO.{row['sno']}</span>
-            </div>
-            <h3 style="margin-top: 0.2rem;">{row['標題']}</h3>
-            """,
+            '<div style="color: #FFFFFF; font-weight: bold; font-size: 1.2rem;">請點擊「更新」以取得內容</div>',
             unsafe_allow_html=True
         )
-        st.write(f"{row['url']}")
-        st.write(f"{row['ai評選原因']}")
-        st.write(f"分數: {row['分數']}")
-        st.write(f"主題: {row['主題']}")
-        #st.write(f"備註: {row['備註']}")
-        #st.write(f"評論: {row['評論']}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        # Explicitly clear the status area or keep the space
+        st.markdown('<div class="status-area" style="height: 1px;"></div>', unsafe_allow_html=True)
 
-        # ====== 按鈕（顯示在主題和留下評論之間）======
-        col1, col2, col3 = st.columns([1,1,1])
+# 4. Content Area
+with content_container:
+    if st.session_state.today_rows:
+        total = len(st.session_state.today_rows)
+        idx = st.session_state.current_index
+        row = st.session_state.today_rows[idx]
+        
+        # Card Container
+        with st.container():
+            st.markdown(f"""
+            <div class="news-card">
+                <div style="color: #4facfe; font-weight: bold; margin-bottom: 0.5rem; font-size: 1.2rem;">
+                    📅 {st.session_state.current_date} | 📑 共 {total} 則 | 📌 第 {idx + 1} 則
+                </div>
+                <h3>{row.get('標題', '無標題')}</h3>
+                <p style="color: #ccc; font-size: 0.9em;">{row.get('url', '')}</p>
+                <hr style="border-color: #004080;">
+                <p><strong>💡 AI 評選原因:</strong><br>{row.get('ai評選原因', '')}</p>
+                <p><strong>🎯 分數:</strong> {row.get('分數', '')} | <strong>🏷️ 主題:</strong> {row.get('主題', '')}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-        with col1:
-            if st.button("⬅ 上一則", key=f"prev_{row.get('sno')}_{row.get('日期')}"):
-                if(st.session_state.current_index > 0):
+            # Navigation Buttons (Restored)
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("⬅️ 上一則", key="btn_prev", disabled=(st.session_state.current_index == 0)):
                     st.session_state.current_index -= 1
                     rerun()
-
-        with col2:
-            if st.button("🔄 更新", key=f"update_{row.get('sno')}_{row.get('日期')}"):
-                button_update_content()
-        with col3:
-            if st.button("➡ 下一則", key=f"next_{row.get('sno')}_{row.get('日期')}"):
-                if(st.session_state.current_index < (len(st.session_state.today_rows)-1)):    
+            with c2:
+                if st.button("➡️ 下一則", key="btn_next", disabled=(st.session_state.current_index == len(st.session_state.today_rows) - 1)):
                     st.session_state.current_index += 1
                     rerun()
 
-        comment_key = f"comment_{row.get('sno')}_{row.get('日期')}"
-
-        # 初始化 session_state 
-        if comment_key not in st.session_state:
-            st.session_state[comment_key] = str(row.get("評論", ""))
-
-
-        comment = st.text_area(
-            "留下評論：",
-            value=st.session_state[comment_key],
-            key=comment_key
-        )
-        
-
-        button_key = f"send_comment_{row.get('列號')}_{row.get('日期')}"
-        if st.button("送出評論", key=button_key):
-            try:
-                # 使用選擇的日期作為 sheetName
-                sheet_name = st.session_state.selected_date.strftime("%Y/%m/%d")
-                payload = {
-                    "sheetName": sheet_name, 
-                    "rowIndex": row["列號"],   
-                    "comment": comment
-                }
-
-                #st.json(payload)
-                #st.write("即將送出的 payload：", payload)
-
-
-                response = requests.post(N8N_WEBHOOK_update, json=payload)
-                if response.status_code == 200:
-                    st.success("評論已送出！")
-
-                    for r in st.session_state.today_rows:
-                        if r["列號"] == row["列號"]:
-                            r["評論"] = comment
-                            break
-
-                else:
-                    st.error(f"n8n 回應錯誤: {response.text}")
-            except Exception as e:
-                st.error(f"無法連線到 n8n 評論: {e}")
-
-
-def button_update_content():
-                selected_date_str = st.session_state.selected_date.strftime("%Y/%m/%d")
-                try:
-                    response = requests.get(N8N_WEBHOOK_read, params={"date": selected_date_str})
-                    if response.status_code == 200:
-                        data = response.json()
-                        if isinstance(data, list) and data:
-                            if len(data) == 1 and "message" in data[0]:
-                                st.success(data[0]["message"])  
-                            else:    
-                                st.session_state.today_rows = [item.get("json", item) for item in data]
-                                st.session_state.current_index = 0
-                                st.session_state.current_date = selected_date_str
-                                rerun()
-                        else:
-                            st.warning("n8n 回傳資料為空")
-                    else:
-                        st.error(f"n8n 回應錯誤: {response.text}")
-                except Exception as e:
-                    st.error(f"無法連線到 n8n 更新 : {e}")
-                    st.text(traceback.format_exc())
-
-
-
-# ====== 按鈕（只在還沒有更新時顯示在底部）======
-if not st.session_state.today_rows:
-    with st.session_state.controls_container.container():
-        col1, col2, col3 = st.columns([1,1,1])
-
-        with col1:
-            st.empty()  # 左側空白
-
-        with col2:
-            if st.button("🔄 更新", key="update_initial"):
-                button_update_content()
-        with col3:
-            st.empty()  # 右側空白
+            # Comment Section
+            st.markdown("---")
+            comment_key = f"comment_{row.get('sno')}_{st.session_state.current_date}"
+            current_comment = row.get("評論", "")
             
-# ====== 顯示目前新聞和狀態 ======
-update_status(st.session_state.current_index)
-show_current_star(st.session_state.today_rows, st.session_state.current_index)
+            new_comment = st.text_area("📝 留下評論", value=current_comment, key=comment_key)
+            
+            if st.button("送出評論", key=f"btn_comment_{row.get('sno')}"):
+                handle_comment(row, new_comment)
+
