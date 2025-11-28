@@ -186,17 +186,38 @@ def inject_pwa_html():
         // Register service worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/static/sw.js')
+                // Try different paths for SW
+                navigator.serviceWorker.register('/app/static/sw.js')
                     .then(function(registration) {
-                        console.log('ServiceWorker registration successful:', registration.scope);
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
                     })
                     .catch(function(err) {
                         console.log('ServiceWorker registration failed:', err);
+                        // Fallback for older streamlit or different config
+                        navigator.serviceWorker.register('/static/sw.js');
                     });
             });
         }
+        
+        // Inject manifest link into window.parent.document.head
+        // This is necessary because st.components runs in an iframe
+        const manifestLink = window.parent.document.createElement('link');
+        manifestLink.rel = 'manifest';
+        // Streamlit Cloud serves static files at /app/static/
+        manifestLink.href = '/app/static/manifest.json';
+        window.parent.document.head.appendChild(manifestLink);
+        
+        // Also inject meta tags for mobile
+        const metaTheme = window.parent.document.createElement('meta');
+        metaTheme.name = 'theme-color';
+        metaTheme.content = '#001F3F';
+        window.parent.document.head.appendChild(metaTheme);
+        
+        const metaApple = window.parent.document.createElement('meta');
+        metaApple.name = 'apple-mobile-web-app-capable';
+        metaApple.content = 'yes';
+        window.parent.document.head.appendChild(metaApple);
         </script>
-        <link rel="manifest" href="/static/manifest.json">
         """,
         height=0,
     )
