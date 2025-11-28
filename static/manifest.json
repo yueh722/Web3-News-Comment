@@ -1,6 +1,6 @@
 {
   "name": "Web3 精選新聞",
-  "short_name": "Web3 News",
+  "short_name": "Web3 精選新聞",
   "description": "Web3 區塊鏈精選新聞應用",
   "start_url": "/",
   "display": "standalone",
