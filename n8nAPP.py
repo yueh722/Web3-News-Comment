@@ -30,7 +30,10 @@ if "current_date" not in st.session_state:
 # ====== Helper Functions ======
 def rerun():
     """Compatible rerun."""
-    st.rerun()
+    try:
+        st.rerun()
+    except AttributeError:
+        st.experimental_rerun()
 
 def handle_update():
     """Fetch news from n8n."""
@@ -44,18 +47,10 @@ def handle_update():
             st.session_state.today_rows = result["data"]
             st.session_state.current_index = 0
             st.session_state.current_date = date_str
-            if not st.session_state.today_rows:
-                 # This will be shown in the status area on rerun
-                 pass 
         else:
             st.success(result.get("message", "操作成功"))
     elif result["status"] == "warning":
         st.warning(result["message"])
-    else:
-            # If data is empty, the result message might say "No news"
-            # We can let the caller handle the message if needed, 
-            # but usually we just update state.
-            pass
     
     return result
 
@@ -120,6 +115,18 @@ def show_web_ui():
                         # Clear message and rerun to show content
                         status_placeholder.empty()
                         rerun()
+                    elif result["status"] == "future_date":
+                        # Future date - show orange warning
+                        status_placeholder.markdown(
+                            '<div class="status-area" style="background-color: #ff9800; color: white;">📅 無此日期資料請重選日期</div>',
+                            unsafe_allow_html=True
+                        )
+                    elif result["status"] == "no_news":
+                        # No news but valid date - show orange warning
+                        status_placeholder.markdown(
+                            '<div class="status-area" style="background-color: #ff9800; color: white;">📭 本日無新聞資料 [0則]</div>',
+                            unsafe_allow_html=True
+                        )
                     elif result["status"] == "warning":
                         status_placeholder.warning(result["message"])
                     else:
@@ -127,7 +134,7 @@ def show_web_ui():
     
     # 3. Status Bar (Below Controls)
     with status_container:
-        # Only show warning if no data. 
+        # Only show message if no data
         if not st.session_state.today_rows:
             st.markdown('<div class="status-area">', unsafe_allow_html=True)
             st.markdown(
@@ -135,9 +142,6 @@ def show_web_ui():
                 unsafe_allow_html=True
             )
             st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            # Explicitly clear the status area or keep the space
-            st.markdown('<div class="status-area" style="height: 1px;"></div>', unsafe_allow_html=True)
     
     # 4. Content Area
     with content_container:
@@ -198,4 +202,3 @@ if is_pwa():
     show_app_ui()
 else:
     show_web_ui()
-
