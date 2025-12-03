@@ -26,6 +26,8 @@ if "selected_date" not in st.session_state:
     st.session_state.selected_date = datetime.today().date()
 if "current_date" not in st.session_state:
     st.session_state.current_date = datetime.today().date()
+if "auto_fetched" not in st.session_state:
+    st.session_state.auto_fetched = False
 
 # ====== Helper Functions ======
 def rerun():
@@ -49,6 +51,9 @@ def handle_update():
             st.session_state.current_date = date_str
         else:
             st.success(result.get("message", "操作成功"))
+    elif result["status"] in ["future_date", "no_news"]:
+        # Clear data so the UI doesn't show old news
+        st.session_state.today_rows = []
     elif result["status"] == "warning":
         st.warning(result["message"])
     
@@ -86,6 +91,36 @@ def show_web_ui():
     # 1. Title
     with header_container:
         st.markdown('<h1 class="custom-title">✨ Web3 精選新聞 ✨</h1>', unsafe_allow_html=True)
+
+    # Auto-fetch on load
+    if not st.session_state.auto_fetched:
+        with status_container:
+            status_placeholder = st.empty()
+            status_placeholder.markdown(
+                f'<div class="status-area" style="background-color: #e69138; color: white;">正在自動更新 {st.session_state.selected_date.strftime("%Y/%m/%d")} 的新聞...</div>', 
+                unsafe_allow_html=True
+            )
+            
+            result = handle_update()
+            st.session_state.auto_fetched = True
+            
+            if result["status"] == "success":
+                status_placeholder.empty()
+                rerun()
+            elif result["status"] == "future_date":
+                status_placeholder.markdown(
+                    '<div class="status-area" style="background-color: #ff9800; color: white;">📅 無此日期資料請重選日期</div>',
+                    unsafe_allow_html=True
+                )
+            elif result["status"] == "no_news":
+                status_placeholder.markdown(
+                    '<div class="status-area" style="background-color: #ff9800; color: white;">📭 本日無新聞資料 [0則]</div>',
+                    unsafe_allow_html=True
+                )
+            elif result["status"] == "warning":
+                status_placeholder.warning(result["message"])
+            else:
+                status_placeholder.error(result["message"])
     
     # 2. Control Panel (Date & Update)
     with controls_container:
