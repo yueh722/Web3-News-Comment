@@ -132,6 +132,7 @@ def show_web_ui():
 
     # Auto-fetch on load (only once per session)
     if not st.session_state.auto_fetched:
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch triggered - first load")
         with status_container:
             status_placeholder = st.empty()
             status_placeholder.markdown(
@@ -152,6 +153,8 @@ def show_web_ui():
             else:
                 # Fallback for unexpected states
                 status_placeholder.error(result.get("message", "Unknown error"))
+    else:
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch skipped - already fetched (auto_fetched={st.session_state.auto_fetched})")
     
     # 2. Control Panel (Date & Update)
     with controls_container:
@@ -231,7 +234,7 @@ def show_web_ui():
                         <span style="color: #4facfe; font-weight: bold; font-size: 1.5rem;">No.  {idx + 1}</span>
                     </div>
                     <h3>{row.get('標題', '無標題')}</h3>
-                    <p style="color: #ccc; font-size: 0.9em;">
+                    <p style="color: #ccc; font-size: 1em;">
                         <a href="{row.get('url', '')}" target="_blank" style="color: #4facfe; text-decoration: none;">
                             {row.get('url', '')}
                         </a>

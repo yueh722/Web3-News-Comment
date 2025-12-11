@@ -11,6 +11,10 @@ class NewsService:
     def fetch_news(self, date_str):
         """Fetch news for a specific date."""
         try:
+            # Log the fetch attempt with timestamp
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{current_time}] fetch_news called for date: {date_str}")
+            
             response = requests.get(self.N8N_WEBHOOK_READ, params={"date": date_str})
             if response.status_code == 200:
                 data = response.json()
