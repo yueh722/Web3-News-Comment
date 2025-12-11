@@ -146,7 +146,7 @@ def show_web_ui():
             # CRITICAL: Set flag BEFORE calling handle_update to prevent re-triggering on rerun
             st.session_state.auto_fetched = True
             
-            result = handle_update()
+            #result = handle_update()
             
             # Rerun to update UI with new state (data or status message)
             # handle_update sets st.session_state.status_message, so we just need to rerun
