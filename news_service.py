@@ -11,9 +11,12 @@ class NewsService:
     def fetch_news(self, date_str):
         """Fetch news for a specific date."""
         try:
-            # Log the fetch attempt with timestamp
+            # Log the fetch attempt with timestamp (using st.write for visibility)
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[{current_time}] fetch_news called for date: {date_str}")
+            try:
+                st.write(f"🔍 [{current_time}] fetch_news called for date: {date_str}")
+            except:
+                pass  # Silently fail if st.write is not available in this context
             
             response = requests.get(self.N8N_WEBHOOK_READ, params={"date": date_str})
             if response.status_code == 200:

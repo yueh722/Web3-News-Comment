@@ -263,19 +263,18 @@ def inject_pwa_detection():
         height=0,
     )
     
-    # Check for PWA mode from URL parameter using older Streamlit API
+    # Check for PWA mode from URL parameter
     if "is_pwa" not in st.session_state:
         try:
-            # Use experimental API which should be available  
-            if hasattr(st, 'experimental_get_query_params'):
-                params = st.experimental_get_query_params()
-                st.session_state.is_pwa = params.get('pwa_mode', ['false'])[0] == 'true'
+            # Use st.query_params (new API)
+            if hasattr(st, 'query_params'):
+                params = st.query_params
+                st.session_state.is_pwa = params.get('pwa_mode', 'false') == 'true'
             else:
                 # Fallback to False if API not available
                 st.session_state.is_pwa = False
         except Exception as e:
             # If any error, default to browser mode
-            print(f"PWA detection error: {e}")
             st.session_state.is_pwa = False
 
 def is_pwa():

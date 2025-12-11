@@ -132,7 +132,10 @@ def show_web_ui():
 
     # Auto-fetch on load (only once per session)
     if not st.session_state.auto_fetched:
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch triggered - first load")
+        try:
+            st.write(f"🚀 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch triggered - first load")
+        except:
+            pass
         with status_container:
             status_placeholder = st.empty()
             status_placeholder.markdown(
@@ -154,7 +157,10 @@ def show_web_ui():
                 # Fallback for unexpected states
                 status_placeholder.error(result.get("message", "Unknown error"))
     else:
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch skipped - already fetched (auto_fetched={st.session_state.auto_fetched})")
+        try:
+            st.write(f"⏭️ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch skipped - already fetched (auto_fetched={st.session_state.auto_fetched})")
+        except:
+            pass
     
     # 2. Control Panel (Date & Update)
     with controls_container:
