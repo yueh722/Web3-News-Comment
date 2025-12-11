@@ -283,3 +283,16 @@ def is_pwa():
     Returns True if in App/PWA mode, False if in Web browser mode.
     """
     return st.session_state.get("is_pwa", False)
+
+def log_to_console(message):
+    """
+    Log a message to the browser console using JavaScript.
+    """
+    # Escape quotes to prevent JS errors
+    safe_message = message.replace('"', '\\"').replace("'", "\\'")
+    js_code = f"""
+    <script>
+    console.log("{safe_message}");
+    </script>
+    """
+    st.components.v1.html(js_code, height=0, width=0)

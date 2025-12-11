@@ -1,23 +1,23 @@
 import streamlit as st
 from datetime import datetime
 from news_service import NewsService
-from utils import inject_custom_css, inject_swipe_detection, inject_pwa_html, inject_pwa_detection, is_pwa
+from utils import inject_custom_css, inject_swipe_detection, inject_pwa_html, inject_pwa_detection, is_pwa, log_to_console
 
-# ====== Configuration & Setup ======
+# ====== 配置與設定 ======
 st.set_page_config(page_title="Web3 News", page_icon="📰", layout="centered")
 
-# Inject PWA support (manifest and service worker)
+# 注入 PWA 支援（清單與 Service Worker）
 inject_pwa_html()
 inject_pwa_detection()
 
 inject_custom_css()
 inject_swipe_detection()
 
-# Initialize Service
+# 初始化服務
 if "news_service" not in st.session_state:
     st.session_state.news_service = NewsService()
 
-# ====== Session State Initialization ======
+# ====== Session State 初始化 ======
 if "today_rows" not in st.session_state:
     st.session_state.today_rows = []
 if "current_index" not in st.session_state:
@@ -32,43 +32,47 @@ if "status_message" not in st.session_state:
     st.session_state.status_message = None
 if "status_type" not in st.session_state:
     st.session_state.status_type = None
+if "comment_success_msg" not in st.session_state:
+    st.session_state.comment_success_msg = None
+if "comment_error_msg" not in st.session_state:
+    st.session_state.comment_error_msg = None
 
-# ====== Helper Functions ======
+# ====== 輔助函式 ======
 def rerun():
-    """Compatible rerun."""
+    """相容的重新執行函式。"""
     try:
         st.rerun()
     except AttributeError:
         st.experimental_rerun()
 
-# Cache compatibility shim
+# 快取相容性墊片 (Shim)
 if hasattr(st, "cache_data"):
     cache_decorator = st.cache_data(ttl=1800, show_spinner=False)
 elif hasattr(st, "experimental_memo"):
     cache_decorator = st.experimental_memo(ttl=1800, show_spinner=False)
 else:
-    # Fallback for very old versions (though args might differ slightly)
+    # 針對非常舊版本的備案（雖然參數可能略有不同）
     cache_decorator = st.cache(ttl=1800, show_spinner=False, suppress_st_warning=True)
 
 @cache_decorator
 def get_cached_news(date_str):
-    """Wrapper to cache news data and avoid repetitive webhook calls."""
-    # Instantiate service here to ensure it's clean and doesn't rely on session_state passing
+    """包裝新聞資料快取以避免重複呼叫 Webhook。"""
+    # 在此實例化服務以確保它是乾淨的，且不依賴傳遞 session_state
     service = NewsService()
     return service.fetch_news(date_str)
 
 def handle_update(force_refresh=False):
-    """Fetch news from n8n."""
+    """從 n8n 獲取新聞。"""
     date_str = st.session_state.selected_date.strftime("%Y/%m/%d")
     
-    # If force refresh is requested (manual click), clear cache for this function
+    # 如果請求強制重新整理（手動點擊），清除此函式的快取
     if force_refresh:
         get_cached_news.clear()
     
-    # Fetch news using cached wrapper
+    # 使用快取包裝器獲取新聞
     result = get_cached_news(date_str)
     
-    # Get today's date for comparison
+    # 獲取今日日期進行比較
     today = datetime.today().date()
     selected = st.session_state.selected_date
         
@@ -78,33 +82,31 @@ def handle_update(force_refresh=False):
             st.session_state.current_index = 0
             st.session_state.current_date = date_str
             
-            # Check if data is empty and set appropriate message
+            # 檢查資料是否為空並設定適當訊息
             if not st.session_state.today_rows:
                 if selected <= today:
-                    # Past or today with no data
+                    # 過去或今天無資料
                     st.session_state.status_message = "📭 本日無新聞資料 [0則]"
                     st.session_state.status_type = "warning"
                 else:
-                    # Future date
+                    # 未來日期
                     st.session_state.status_message = "📅 無此日期資料請重選日期"
                     st.session_state.status_type = "warning"
             else:
-                # Clear status message if data exists
+                # 如果資料存在，清除狀態訊息
                 st.session_state.status_message = None
                 st.session_state.status_type = None
         else:
             st.success(result.get("message", "操作成功"))
     else:
-        # Clear data on warning or error
+        # 警告或錯誤時清除資料
         st.session_state.today_rows = []
         
         if result["status"] == "warning":
             st.session_state.status_message = result["message"]
             st.session_state.status_type = "warning"
         elif result["status"] in ["future_date", "no_news"]:
-             # Map these specific statuses to messages if not already handled by logic above
-             # But fetch_news usually returns 'success' with empty data or specific status
-             # Let's handle the specific statuses if fetch_news returns them
+             # 如果 fetch_news 返回特定狀態，則處理這些狀態
             if result["status"] == "future_date":
                 st.session_state.status_message = "📅 無此日期資料請重選日期"
                 st.session_state.status_type = "warning"
@@ -117,43 +119,49 @@ def handle_update(force_refresh=False):
     
     return result
 
-def handle_comment(row, comment):
-    """Send comment to n8n."""
+def handle_comment(row, comment_key):
+    """發送評論至 n8n（Callback 形式）。"""
+    # 從 Session State 取得最新的評論輸入值
+    comment = st.session_state.get(comment_key, "")
     sheet_name = st.session_state.selected_date.strftime("%Y/%m/%d")
     
     with st.spinner("送出評論中..."):
         result = st.session_state.news_service.post_comment(sheet_name, row["列號"], comment)
     
     if result["status"] == "success":
-        st.success(result["message"])
-        # Update local state
+        # 儲存成功訊息到 session state
+        st.session_state.comment_success_msg = result["message"]
+        st.session_state.comment_error_msg = None # 清除先前的錯誤
+        
+        # 更新本地狀態
         for r in st.session_state.today_rows:
             if r["列號"] == row["列號"]:
                 r["評論"] = comment
                 break
-        rerun()
+        # Callback 結束後，Streamlit 會自動執行一次 Rerun
     else:
-        st.error(result["message"])
+        st.session_state.comment_error_msg = result["message"]
+        st.session_state.comment_success_msg = None
 
 
-# ====== UI Functions ======
+# ====== UI 函式 ======
 
 def show_web_ui():
-    """Display Web UI (for browser mode)."""
-    # Define Layout Containers
+    """顯示 Web 使用者介面（適用於瀏覽器模式）。"""
+    # 定義佈局容器
     header_container = st.container()
     controls_container = st.container()
     status_container = st.container()
     content_container = st.container()
     
-    # 1. Title
+    # 1. 標題
     with header_container:
         st.markdown('<h1 class="custom-title">✨ Web3 精選新聞 ✨</h1>', unsafe_allow_html=True)
 
-    # Auto-fetch on load (only once per session)
+    # 載入時自動獲取（每個 Session 僅一次）
     if not st.session_state.auto_fetched:
         try:
-            st.write(f"🚀 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch triggered - first load")
+            log_to_console(f"🚀 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch triggered - first load")
         except:
             pass
         with status_container:
@@ -163,26 +171,22 @@ def show_web_ui():
                 unsafe_allow_html=True
             )
             
-            # CRITICAL: Set flag BEFORE calling handle_update to prevent re-triggering on rerun
+            # 關鍵：在呼叫 handle_update 之前設定旗標，以防止重新執行時再次觸發
             st.session_state.auto_fetched = True
             
             result = handle_update()
             
-            # Rerun to update UI with new state (data or status message)
-            # handle_update sets st.session_state.status_message, so we just need to rerun
+            # 重新執行以更新 UI（資料或狀態訊息）
+            # handle_update 設定了 st.session_state.status_message，所以我們只需要重新執行
             if result["status"] == "success" or st.session_state.status_message:
                 status_placeholder.empty()
                 rerun()
             else:
-                # Fallback for unexpected states
+                # 意外狀態的備案
                 status_placeholder.error(result.get("message", "Unknown error"))
-    else:
-        try:
-            st.write(f"⏭️ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Auto-fetch skipped - already fetched (auto_fetched={st.session_state.auto_fetched})")
-        except:
-            pass
+
     
-    # 2. Control Panel (Date & Update)
+    # 2. 控制面板（日期與更新）
     with controls_container:
         col_date, col_btn = st.columns([2, 1])
         with col_date:
@@ -191,11 +195,11 @@ def show_web_ui():
                 value=st.session_state.selected_date
             )
         with col_btn:
-            # Add spacer to align button with input box (pushing it down by label height)
-            # Increased to 38px to account for larger label font size
+            # 加入間隔以對齊按鈕與輸入框（因為標籤高度將其下推）
+            # 增加至 38px 以配合較大的標籤字體大小
             st.markdown('<div style="height: 38px;"></div>', unsafe_allow_html=True)
             if st.button("🔄 更新", key="btn_update_news"):
-                # Show updating message in status container using a placeholder
+                # 在狀態容器中使用佔位符顯示更新訊息
                 with status_container:
                     status_placeholder = st.empty()
                     status_placeholder.markdown(
@@ -203,23 +207,22 @@ def show_web_ui():
                         unsafe_allow_html=True
                     )
                     
-                    # Perform update
+                    # 執行更新
                     result = handle_update(force_refresh=True)
                     
-                    # Rerun to update UI with new state (data or status message)
+                    # 重新執行以更新 UI（資料或狀態訊息）
                     if result["status"] == "success" or st.session_state.status_message:
                         status_placeholder.empty()
                         rerun()
                     else:
                         status_placeholder.error(result.get("message", "Unknown error"))
     
-    # 3. Status Bar (Below Controls)
-    # 3. Status Bar (Below Controls)
+    # 3. 狀態列（控制項下方）
     with status_container:
-        # Show status message if set
+        # 如果有設定狀態訊息則顯示
         if st.session_state.status_message:
             if st.session_state.status_type == "warning":
-                # Orange warning box
+                # 橘色警告框
                 st.markdown(
                     f'<div class="status-area" style="background-color: #e69138; color: white; padding: 1rem; border-radius: 0.5rem; text-align: center;">{st.session_state.status_message}</div>',
                     unsafe_allow_html=True
@@ -235,7 +238,7 @@ def show_web_ui():
                     unsafe_allow_html=True
                 )
         elif not st.session_state.today_rows:
-            # Default message if no data and no status message
+            # 如果無資料且無狀態訊息的預設訊息
             st.markdown('<div class="status-area">', unsafe_allow_html=True)
             st.markdown(
                 '<div style="color: #FFFFFF; font-weight: bold; font-size: 1.2rem;">請點擊「更新」以取得內容</div>',
@@ -243,14 +246,14 @@ def show_web_ui():
             )
             st.markdown('</div>', unsafe_allow_html=True)
     
-    # 4. Content Area
+    # 4. 內容區域
     with content_container:
         if st.session_state.today_rows:
             total = len(st.session_state.today_rows)
             idx = st.session_state.current_index
             row = st.session_state.today_rows[idx]
             
-            # Card Container
+            # 卡片容器
             with st.container():
                 st.markdown(f"""
                 <div class="news-card">
@@ -271,7 +274,7 @@ def show_web_ui():
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Navigation Buttons (Restored)
+                # 導航按鈕（已恢復）
                 c1, c2 = st.columns(2)
                 with c1:
                     if st.button("⬅️ 上一則", key="btn_prev", disabled=(st.session_state.current_index == 0)):
@@ -282,26 +285,36 @@ def show_web_ui():
                         st.session_state.current_index += 1
                         rerun()
 
-                # Comment Section
+                # 評論區塊
                 st.markdown("---")
                 comment_key = f"comment_{row.get('sno')}_{st.session_state.current_date}"
                 current_comment = row.get("評論", "")
                 
                 new_comment = st.text_area("📝 留下評論", value=current_comment, key=comment_key)
                 
-                if st.button("送出評論", key=f"btn_comment_{row.get('sno')}"):
-                    handle_comment(row, new_comment)
+                st.button("送出評論", key=f"btn_comment_{row.get('sno')}", on_click=handle_comment, args=(row, comment_key))
+                
+                # 顯示評論成功訊息（如果在重新執行後有設定）
+                if st.session_state.comment_success_msg:
+                    st.success(st.session_state.comment_success_msg)
+                    # 顯示後清除，避免下次重新整理還出現
+                    st.session_state.comment_success_msg = None
+                
+                # 顯示評論錯誤訊息
+                if st.session_state.comment_error_msg:
+                    st.error(st.session_state.comment_error_msg)
+                    st.session_state.comment_error_msg = None
 
 def show_app_ui():
-    """Display App UI (for PWA/standalone mode)."""
-    # For now, App UI is the same as Web UI
-    # You can customize this later for a more app-like experience
+    """顯示 App 使用者介面（適用於 PWA/獨立模式）。"""
+    # 目前 App 介面與 Web 介面相同
+    # 您可以稍後自訂此處以獲得更像 App 的體驗
     show_web_ui()
 
 
-# ====== Main App Routing ======
+# ====== 主要 App 路由 ======
 
-# Check if running in PWA mode and route to appropriate UI
+# 檢查是否在 PWA 模式下執行並路由至適當的 UI
 if is_pwa():
     show_app_ui()
 else:
