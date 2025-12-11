@@ -41,12 +41,32 @@ def rerun():
     except AttributeError:
         st.experimental_rerun()
 
-def handle_update():
+# Cache compatibility shim
+if hasattr(st, "cache_data"):
+    cache_decorator = st.cache_data(ttl=1800, show_spinner=False)
+elif hasattr(st, "experimental_memo"):
+    cache_decorator = st.experimental_memo(ttl=1800, show_spinner=False)
+else:
+    # Fallback for very old versions (though args might differ slightly)
+    cache_decorator = st.cache(ttl=1800, show_spinner=False, suppress_st_warning=True)
+
+@cache_decorator
+def get_cached_news(date_str):
+    """Wrapper to cache news data and avoid repetitive webhook calls."""
+    # Instantiate service here to ensure it's clean and doesn't rely on session_state passing
+    service = NewsService()
+    return service.fetch_news(date_str)
+
+def handle_update(force_refresh=False):
     """Fetch news from n8n."""
     date_str = st.session_state.selected_date.strftime("%Y/%m/%d")
     
-    # Fetch news directly (loading message handled in UI)
-    result = st.session_state.news_service.fetch_news(date_str)
+    # If force refresh is requested (manual click), clear cache for this function
+    if force_refresh:
+        get_cached_news.clear()
+    
+    # Fetch news using cached wrapper
+    result = get_cached_news(date_str)
     
     # Get today's date for comparison
     today = datetime.today().date()
@@ -146,7 +166,7 @@ def show_web_ui():
             # CRITICAL: Set flag BEFORE calling handle_update to prevent re-triggering on rerun
             st.session_state.auto_fetched = True
             
-            #result = handle_update()
+            result = handle_update()
             
             # Rerun to update UI with new state (data or status message)
             # handle_update sets st.session_state.status_message, so we just need to rerun
@@ -184,7 +204,7 @@ def show_web_ui():
                     )
                     
                     # Perform update
-                    result = handle_update()
+                    result = handle_update(force_refresh=True)
                     
                     # Rerun to update UI with new state (data or status message)
                     if result["status"] == "success" or st.session_state.status_message:
