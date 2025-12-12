@@ -299,31 +299,31 @@ def log_to_console(message):
 
 def inject_visibility_auto_fetch():
     """
-    Inject JS to detect visibility and click the hidden 'StartAutoFetch' button.
-    This ensures auto-fetch only happens when a user is actually viewing the page.
+    Inject JS to detect user interaction and click the hidden 'StartAutoFetch' button.
+    This ensures auto-fetch only happens when a REAL user interacts with the page (mouse/touch/key),
+    preventing bot/headless browser triggers.
     """
     st.components.v1.html(
         """
         <script>
+        let hasTriggered = false;
+
         function triggerFetch() {
+            if (hasTriggered) return;
+            
             const buttons = window.parent.document.querySelectorAll('button');
             buttons.forEach(btn => {
                 // Find the specific button by its text content
                 if (btn.innerText === "StartAutoFetch") {
                     btn.click();
+                    hasTriggered = true;
+                    // Remove listeners after success
+                    removeInteractionListeners();
                 }
             });
         }
-
-        function checkAndTrigger() {
-            // Only trigger if visible
-            if (document.visibilityState === 'visible') {
-                triggerFetch();
-            }
-        }
         
-        // Hide the button visuals immediately using JS (safer than CSS selectors)
-        // We run this periodically or on load to ensure button is hidden
+        // Hide the button visuals immediately using JS
         function hideFetchButton() {
             const buttons = window.parent.document.querySelectorAll('button');
             buttons.forEach(btn => {
@@ -335,29 +335,42 @@ def inject_visibility_auto_fetch():
                     btn.style.padding = '0';
                     btn.style.margin = '0';
                     btn.style.overflow = 'hidden';
-                    btn.setAttribute('tabindex', '-1'); // Remove from tab order
+                    btn.setAttribute('tabindex', '-1'); 
                 }
+            });
+        }
+        
+        function handleInteraction() {
+            if (!hasTriggered) {
+                triggerFetch();
+            }
+        }
+
+        function addInteractionListeners() {
+            const events = ['mousemove', 'touchstart', 'keydown', 'click', 'scroll'];
+            events.forEach(event => {
+                window.parent.document.addEventListener(event, handleInteraction, { once: true });
+            });
+        }
+        
+        function removeInteractionListeners() {
+             const events = ['mousemove', 'touchstart', 'keydown', 'click', 'scroll'];
+            events.forEach(event => {
+                window.parent.document.removeEventListener(event, handleInteraction);
             });
         }
 
         // Run on load
         window.addEventListener('load', function() {
             hideFetchButton();
-            checkAndTrigger();
-        });
-        
-        // Run on visibility change (for background tabs coming into focus)
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'visible') {
-                checkAndTrigger();
-            }
+            addInteractionListeners();
         });
 
-        // Run immediately in case of race conditions
+        // Run immediately 
         hideFetchButton();
-        checkAndTrigger();
+        addInteractionListeners();
         
-        // Observer to hide button if it appears later (dynamically rendered)
+        // Observer to hide button if it appears later
         const observer = new MutationObserver(function(mutations) {
             hideFetchButton();
         });
